@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'custom_components/meteo_grenoble/manifest.json'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Auto Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from manifest.json
+        id: get_version
+        run: |
+          VERSION=$(jq -r '.version' custom_components/meteo_grenoble/manifest.json)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Create Zip Archive
+        uses: thedoctor0/zip-release@0.7.6
+        with:
+          type: 'zip'
+          filename: 'meteo_grenoble.zip'
+          path: 'custom_components/meteo_grenoble/'
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            Automatic release for version v${{ steps.get_version.outputs.VERSION }} of the Météo-Grenoble.com Home Assistant integration.
+            
+            ### Installation
+            Download the `meteo_grenoble.zip` file below and extract it into your `custom_components/` directory, or use HACS.
+          artifacts: "meteo_grenoble.zip"
+          skipIfReleaseExists: true
+          token: ${{ secrets.GITHUB_TOKEN }}

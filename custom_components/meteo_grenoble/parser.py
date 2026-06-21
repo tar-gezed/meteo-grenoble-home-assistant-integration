@@ -1,0 +1,151 @@
+"""Parser for the Next.js RSC weather data stream from Météo-Grenoble.com."""
+import json
+import logging
+from typing import Any, Dict, List, Tuple
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def clean_and_parse_line(line: str) -> Tuple[str | None, Any]:
+    """Clean and parse a single line from the Next.js RSC stream.
+
+    Handles standard JSON lines and Next.js internal prefixes (I, T, M, H, L, etc.).
+    """
+    colon_idx = line.find(":")
+    if colon_idx == -1:
+        return None, line
+
+    key = line[:colon_idx]
+    val_str = line[colon_idx + 1 :]
+
+    # Try standard JSON parsing first
+    try:
+        parsed_val = json.loads(val_str)
+        return key, parsed_val
+    except json.JSONDecodeError:
+        # If parsing fails, it could be a Next.js RSC prefix (e.g., I, T, M, H, L)
+        if len(val_str) > 1 and val_str[0] in "ITMHL" and val_str[1] in "[{":
+            prefix = val_str[0]
+            inner_str = val_str[1:]
+            try:
+                parsed_val = json.loads(inner_str)
+                return f"{key}_{prefix}", parsed_val
+            except json.JSONDecodeError:
+                pass
+        return key, val_str
+
+
+def parse_rsc_stream(content: str) -> Dict[str, Any]:
+    """Parse the raw Next.js RSC text stream and extract weather components.
+
+    Extracts:
+    - Realtime weather data
+    - Rain forecast for the hour
+    - 9-day forecast (including steps, saint, vigilance and flash alert)
+    """
+    if not content or not content.strip():
+        raise ValueError("Empty response received from the server")
+
+    lines = content.split("\n")
+    forecasts_list: List[List[Dict[str, Any]]] = []
+    rain_list: List[List[Dict[str, Any]]] = []
+    realtime_list: List[Dict[str, Any]] = []
+
+    def search_data(obj: Any) -> None:
+        """Recursively search for target dictionaries in the parsed object."""
+        if isinstance(obj, dict):
+            # Find daily forecasts
+            if "forecasts" in obj and isinstance(obj["forecasts"], list):
+                f_list = obj["forecasts"]
+                if len(f_list) > 0 and isinstance(f_list[0], dict) and "day" in f_list[0]:
+                    forecasts_list.append(f_list)
+
+            # Find rain forecast in the hour
+            if "rain" in obj and isinstance(obj["rain"], list) and len(obj["rain"]) > 0:
+                if isinstance(obj["rain"][0], dict) and "desc" in obj["rain"][0]:
+                    rain_list.append(obj["rain"])
+
+            # Find realtime weather data
+            if "temperature" in obj and "humidex" in obj and "wind_speed" in obj:
+                realtime_list.append(obj)
+
+            # Recurse
+            for val in obj.values():
+                if isinstance(val, (dict, list)):
+                    search_data(val)
+
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    search_data(item)
+
+    for line in lines:
+        cleaned_line = line.strip()
+        if not cleaned_line:
+            continue
+        key, val = clean_and_parse_line(cleaned_line)
+        if val is None or isinstance(val, str):
+            continue
+        search_data(val)
+
+    if not realtime_list and not forecasts_list:
+        raise ValueError("Could not find weather data in the RSC stream")
+
+    realtime = realtime_list[0] if realtime_list else {}
+    forecasts = forecasts_list[0] if forecasts_list else []
+    rain = rain_list[0] if rain_list else []
+
+    return {
+        "realtime": realtime,
+        "forecasts": forecasts,
+        "rain": rain,
+    }
+
+
+def get_today_forecast(forecasts: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+    """Return the forecast dictionary for today in local time."""
+    if not forecasts:
+        return None
+    from datetime import datetime
+    today = datetime.now().date()
+    for day in forecasts:
+        day_str = day.get("day", "")
+        if not day_str:
+            continue
+        try:
+            forecast_date = datetime.fromisoformat(day_str.replace("Z", "+00:00")).date()
+            if forecast_date == today:
+                return day
+        except Exception:
+            pass
+    return forecasts[0]
+
+
+def get_yesterday_forecast(forecasts: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+    """Return the forecast dictionary for yesterday in local time."""
+    if not forecasts:
+        return None
+    from datetime import datetime, timedelta
+    yesterday = datetime.now().date() - timedelta(days=1)
+    for day in forecasts:
+        day_str = day.get("day", "")
+        if not day_str:
+            continue
+        try:
+            forecast_date = datetime.fromisoformat(day_str.replace("Z", "+00:00")).date()
+            if forecast_date == yesterday:
+                return day
+        except Exception:
+            pass
+    return None
+
+
+def get_flash_alert(forecasts: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+    """Find the flash alert dictionary from the forecasts list."""
+    if not forecasts:
+        return None
+    for day in forecasts:
+        flash = day.get("flash")
+        if isinstance(flash, dict):
+            return flash
+    return None
