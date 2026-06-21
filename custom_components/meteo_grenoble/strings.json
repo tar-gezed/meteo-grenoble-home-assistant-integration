@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Météo-Grenoble.com",
+        "description": "Do you want to configure Météo-Grenoble.com?"
+      }
+    },
+    "abort": {
+      "already_configured": "Météo-Grenoble.com is already configured."
+    }
+  }
+}

@@ -126,10 +126,12 @@ class TestMeteoGrenobleParser(unittest.TestCase):
         self.assertIsNotNone(today_forecast)
         self.assertEqual(today_forecast.get("saintName"), "Aujourd'hui")
 
-        # 3. Test fallback to first if today is not in list
+        from datetime import datetime, timedelta
+        day1 = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d") + "T00:00:00+00:00"
+        day2 = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d") + "T00:00:00+00:00"
         forecasts_no_today = [
-            {"day": "2026-06-20T00:00:00+00:00", "saintName": "Sylvère"},
-            {"day": "2026-06-22T00:00:00+00:00", "saintName": "Demain"},
+            {"day": day1, "saintName": "Sylvère"},
+            {"day": day2, "saintName": "Demain"},
         ]
         fallback_forecast = get_today_forecast(forecasts_no_today)
         self.assertEqual(fallback_forecast.get("saintName"), "Sylvère")

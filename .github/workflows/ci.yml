@@ -1,18 +1,54 @@
-name: Release
+name: CI
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'custom_components/meteo_grenoble/manifest.json'
+  pull_request:
 
 permissions:
   contents: write
 
 jobs:
+  validate:
+    name: Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: HACS Validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+      - name: Hassfest Validation
+        uses: home-assistant/actions/hassfest@master
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-homeassistant-custom-component
+
+      - name: Run tests
+        run: |
+          pytest tests/
+
   release:
     name: Auto Release
+    needs: [validate, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -26,11 +62,9 @@ jobs:
           echo "Extracted version: $VERSION"
 
       - name: Create Zip Archive
-        uses: thedoctor0/zip-release@0.7.6
-        with:
-          type: 'zip'
-          filename: 'meteo_grenoble.zip'
-          path: 'custom_components/meteo_grenoble/'
+        run: |
+          cd custom_components/meteo_grenoble
+          zip -r ../../meteo_grenoble.zip .
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1

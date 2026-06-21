@@ -1,11 +1,11 @@
 {
   "domain": "meteo_grenoble",
   "name": "Météo-Grenoble.com",
-  "codeowners": [],
+  "codeowners": ["@tar-gezed"],
   "config_flow": true,
   "documentation": "https://github.com/tar-gezed/meteo-grenoble-home-assistant-integration/blob/main/README.md",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/meteo-grenoble-home-assistant-integration/issues",
   "requirements": [],
-  "version": "1.0.3"
+  "version": "1.0.5"
 }
