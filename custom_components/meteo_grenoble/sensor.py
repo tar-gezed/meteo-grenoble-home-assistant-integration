@@ -361,6 +361,16 @@ class MeteoGrenobleSensor(CoordinatorEntity, SensorEntity):
                 raw_text = flash_data.get("flashTextHtml", "")
                 clean_text = re.sub(r"<[^>]+>", "", raw_text)
                 clean_text = html.unescape(clean_text).strip()
+                
+                # Remove recurring donation/support advertisement message
+                donation_pattern = (
+                    r"\s*IMPORTANT\s*>+\s*Merci pour vos dons,\s*véritables moteurs de "
+                    r"ce service gratuit\s*>+\s*Votre soutien nous aide à couvrir les "
+                    r"coûts de fonctionnement,\s*à développer de nouvelles fonctionnalités "
+                    r"et à garantir un accès libre à l'information pour tous\.?\s*"
+                )
+                clean_text = re.sub(donation_pattern, " ", clean_text, flags=re.IGNORECASE).strip()
+                
                 return {
                     "text": clean_text,
                     "updated_at": flash_data.get("flashUpdatedAt"),

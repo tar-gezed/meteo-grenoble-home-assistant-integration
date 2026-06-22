@@ -244,4 +244,4 @@ Une fois les logs activés, redémarrez Home Assistant et observez le fichier `h
 ## 📄 Licence & Crédits
 
 *   **Données** : Les données météo appartiennent exclusivement au site [Météo-Grenoble.com](https://www.meteo-grenoble.com/) et à ses prévisionnistes. Pensez à visiter leur site pour soutenir leur travail de prévision locale bénévole et professionnel.
-*   **Intégration** : Développée par [tar-gezed](https://github.com/tar-gezed) et distribuée sous licence MIT.
+*   **Intégration** : Développée par [tar-gezed](https://github.com/tar-gezed) et distribuée sous licence Apache 2.0.
