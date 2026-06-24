@@ -182,14 +182,82 @@ show_forecast: true
 ```
 
 ### 2. Visualisation de la pluie dans l'heure (Card Lovelace-hourly-weather)
-Si vous utilisez la carte personnalisée populaire `lovelace-hourly-weather` (disponible sur HACS), voici une configuration idéale exploitant les attributs détaillés du capteur de pluie dans l'heure :
+
+L'entité météo principale (`weather.meteo_grenoble_com`) ne fournit que des prévisions quotidiennes (sur 9 jours). Pour visualiser la prévision de pluie dans l'heure (qui est découpée en 9 intervalles de 5 à 10 minutes) sous forme de barre de couleur avec la carte personnalisée [`lovelace-hourly-weather`](https://github.com/decompil3d/lovelace-hourly-weather), il faut créer une entité météo virtuelle de type "Template".
+
+Cette entité virtuelle va convertir les intensités de pluie du capteur en conditions standards (Sec $\rightarrow$ `sunny`/`clear-night`, Faible $\rightarrow$ `rainy`, Modérée $\rightarrow$ `pouring`, Forte $\rightarrow$ `lightning-rainy`) et adapter l'icône selon qu'il fasse jour ou nuit.
+
+#### Étape 1 : Ajouter le Template dans `configuration.yaml`
+Ajoutez le code suivant dans votre fichier `configuration.yaml` :
+
+```yaml
+# Météo-Grenoble - Pluie dans la prochaine heure
+template:
+  - weather:
+      - name: "Météo Grenoble Pluie dans l'heure"
+        unique_id: meteo_grenoble_pluie_dans_l_heure
+        temperature_unit: "°C"
+        condition: >
+          {% set rain_val = state_attr('sensor.meteo_grenoble_com_pluie_dans_l_heure', 'forecast') %}
+          {% if rain_val and rain_val|length > 0 %}
+            {% if rain_val[0].rain == 1 %}
+              {{ 'sunny' if is_state('sun.sun', 'above_horizon') else 'clear-night' }}
+            {% elif rain_val[0].rain == 2 %}
+              rainy
+            {% elif rain_val[0].rain == 3 %}
+              pouring
+            {% else %}
+              lightning-rainy
+            {% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+        temperature: "{{ states('sensor.meteo_grenoble_com_temperature') | float(0) }}"
+        humidity: "{{ states('sensor.meteo_grenoble_com_humidity') | float(0) }}"
+        forecast_hourly: >
+          {% set rain_data = state_attr('sensor.meteo_grenoble_com_pluie_dans_l_heure', 'forecast') %}
+          {% set is_day = is_state('sun.sun', 'above_horizon') %}
+          {% if rain_data %}
+            {% set ns = namespace(res=[]) %}
+            {% for item in rain_data %}
+              {% set cond = 'sunny' if is_day else 'clear-night' %}
+              {% if item.rain == 2 %}
+                {% set cond = 'rainy' %}
+              {% elif item.rain == 3 %}
+                {% set cond = 'pouring' %}
+              {% elif item.rain == 4 %}
+                {% set cond = 'lightning-rainy' %}
+              {% endif %}
+              {% set ns.res = ns.res + [{
+                'datetime': item.time,
+                'condition': cond,
+                'precipitation_probability': (0 if item.rain == 1 else (30 if item.rain == 2 else (60 if item.rain == 3 else 90)))
+              }] %}
+            {% endfor %}
+            {{ ns.res }}
+          {% else %}
+            []
+          {% endif %}
+```
+
+Rechargez ensuite les **Entités de modèle** via les *Outils de développement* de Home Assistant (ou redémarrez-le).
+
+#### Étape 2 : Configurer la carte Lovelace
+Ajoutez ensuite la carte sur votre tableau de bord avec cette configuration :
 
 ```yaml
 type: custom:hourly-weather
-entity: weather.meteo_grenoble_com
-name: Pluie dans l'heure (Grenoble)
-icons: true
-num_segments: '12'
+entity: weather.meteo_grenoble_pluie_dans_l_heure
+num_segments: 9
+name: Grenoble - Pluie dans l'heure
+show_precipitation_probability: true
+hide_temperatures: true
+colors:
+  sunny: "#a5d6a7"            # Vert (Sec en journée - Icône Soleil)
+  clear-night: "#a5d6a7"      # Vert (Sec en soirée - Icône Lune)
+  rainy: "#90caf9"            # Bleu ciel (Pluie faible)
+  pouring: "#42a5f5"          # Bleu modéré (Pluie modérée)
+  lightning-rainy: "#1565c0"  # Bleu foncé (Pluie forte)
 ```
 
 ### 3. Affichage d'un bulletin d'alerte flash (Markdown conditionnel)
@@ -211,7 +279,124 @@ card:
     *Mis à jour le : {{ state_attr('sensor.meteo_grenoble_com_alerte_flash', 'updated_at') }}*
 ```
 
+### 4. Carte météo avancée (Platinum Weather Card)
+
+Pour un affichage très complet et esthétique similaire à celui du site internet (incluant le bandeau d'alerte orange/rouge, le saint du jour, la pluie dans l'heure et l'indice humidex), vous pouvez installer la carte personnalisée [Platinum Weather Card](https://github.com/tommyjlong/platinum-weather-card) via HACS.
+
+Cette carte exploite de façon optimale les entités spécifiques de notre intégration :
+*   **Bulletin de vigilance (Alerte Flash)** : S'affiche sous forme de bandeau d'alerte en haut de la carte.
+*   **Dernière mise à jour** : Affiche l'heure exacte d'actualisation de la station physique.
+*   **Slots personnalisés (Custom slots)** : Permettent d'ajouter le saint du jour, la pluie dans l'heure, l'indice Humidex et le ressenti Humidex dans la grille d'informations.
+
+#### Code de configuration Lovelace (YAML)
+
+Ajoutez une carte de type **Manuel** sur votre tableau de bord et collez la configuration ci-dessous :
+
+```yaml
+type: custom:platinum-weather-card
+card_config_version: 8
+daily_extended_forecast_days: 9
+daily_forecast_days: 9
+daily_forecast_layout: vertical
+daily_extended_name_attr: description
+daily_extended_use_attr: true
+forecast_type: daily
+option_show_overview_decimals: true
+option_show_overview_separator: true
+overview_layout: complete
+section_order:
+  - overview
+  - extended
+  - slots
+  - daily_forecast
+show_section_daily_forecast: true
+show_section_extended: true
+show_section_overview: true
+show_section_slots: true
+text_card_title: Météo Grenoble
+text_update_time_prefix: "Mise à jour :"
+update_time_use_attr: false
+weather_entity: weather.meteo_grenoble_com
+
+# Horodatage et bulletin vigilance
+entity_update_time: sensor.meteo_grenoble_com_derniere_mise_a_jour
+entity_extended: sensor.meteo_grenoble_com_alerte_flash
+extended_use_attr: true
+extended_name_attr: text
+
+# Données actuelles
+entity: weather.meteo_grenoble_com
+entity_temperature: sensor.meteo_grenoble_com_temperature
+entity_apparent_temp: sensor.meteo_grenoble_com_ressenti_au_vent
+entity_summary: sensor.meteo_grenoble_com_description_meteo_du_jour
+
+# Prévisions à 9 jours
+entity_forecast_icon: weather.meteo_grenoble_com
+entity_forecast_icon_1: weather.meteo_grenoble_com
+entity_forecast_max: weather.meteo_grenoble_com
+entity_forecast_max_1: weather.meteo_grenoble_com
+entity_forecast_min: weather.meteo_grenoble_com
+entity_forecast_min_1: weather.meteo_grenoble_com
+entity_extended_1: weather.meteo_grenoble_com
+entity_summary_1: weather.meteo_grenoble_com
+entity_pop_1: weather.meteo_grenoble_com
+entity_pos_1: weather.meteo_grenoble_com
+
+# Disposition des slots de données (Colonnes gauche & droite)
+slot_l1: custom1        # Saint du jour
+slot_l2: custom2        # Pluie dans l'heure
+slot_l3: wind           # Vitesse et direction du vent
+slot_l4: sun            # Repli par défaut -> Affiche la Pression (NaNhPa si non fournie)
+slot_l5: sun            # Repli par défaut -> Affiche le prochain événement solaire (sun_next)
+slot_l6: remove
+slot_l7: remove
+slot_l8: remove
+
+slot_r1: custom3        # Indice Humidex
+slot_r2: custom4        # Sensation Humidex
+slot_r3: forecast_max   # Température maximale prévue pour aujourd'hui
+slot_r4: forecast_min   # Température minimale prévue pour aujourd'hui
+slot_r5: sun            # Repli par défaut -> Affiche l'événement solaire suivant (sun_following)
+slot_r6: remove
+slot_r7: remove
+slot_r8: remove
+
+# Entités pour le vent et le soleil
+entity_wind_speed: sensor.meteo_grenoble_com_vitesse_du_vent
+entity_wind_bearing: sensor.meteo_grenoble_com_direction_du_vent
+entity_sun: sun.sun
+
+# Définition des informations personnalisées
+custom1_icon: mdi:hands-pray
+custom1_units: ""
+custom1_value: sensor.meteo_grenoble_com_saint_du_jour
+
+custom2_icon: mdi:weather-rainy
+custom2_units: ""
+custom2_value: sensor.meteo_grenoble_com_pluie_dans_l_heure
+
+custom3_icon: mdi:thermometer-water
+custom3_units: ""
+custom3_value: sensor.meteo_grenoble_com_humidex
+
+custom4_icon: mdi:comment-alert
+custom4_units: ""
+custom4_value: sensor.meteo_grenoble_com_humidex_sensation
+
+grid_options:
+  columns: full
+  rows: 4
+```
+
+#### 💡 Astuces de configuration (Éviter les valeurs "NaN")
+
+La station météo en temps réel de Grenoble ne transmettant pas certaines données (comme l'humidité relative actuelle, la pression atmosphérique ou les rafales de vent) :
+1. **Éviter `Gust NaN`** : Ne renseignez pas le champ `entity_wind_gust` dans la configuration. Ainsi, seul le vent moyen sera affiché (ex: `5 km/h`) sans essayer d'afficher des rafales inexistantes.
+2. **Nettoyer les slots vides** : Assurez-vous d'avoir explicitement configuré sur `remove` les slots que vous n'utilisez pas afin que la carte ne tente pas d'afficher de données par défaut non disponibles (comme `pressure` qui afficherait `NaNhPa`).
+3. **Configuration du Soleil** : Plutôt que d'utiliser la valeur `sun` (qui s'appuie sur le comportement de repli par défaut de la carte et peut charger la pression sur `slot_l4`), il est recommandé de déclarer explicitement `sun_next` (prochain événement solaire) et `sun_following` (événement solaire suivant) sur vos slots (par exemple `slot_l5: sun_next` et `slot_r5: sun_following`), en réglant `slot_l4` sur `remove`.
+
 ---
+
 
 ## 🛠️ Fonctionnement Technique et Crawling
 
@@ -226,6 +411,29 @@ Cette intégration a été conçue pour respecter le fonctionnement du site [met
 
 ---
 
+## 🧪 Tests Unitaires en Local
+
+Le projet intègre une suite de tests unitaires pour valider le comportement du parseur RSC, le mappage des pictogrammes et l'extraction des alertes.
+
+### 1. Fonctionnement des tests
+Les tests du parseur sont indépendants du framework Home Assistant. Ils se basent sur des **fixtures hors-ligne** (extraits textuels réels de flux RSC enregistrés localement dans `tests/components/meteo_grenoble/fixtures/`). Cela permet de valider le code d'analyse de manière déconnectée, sans dépendance réseau et sans solliciter les serveurs de meteo-grenoble.com.
+
+### 2. Lancer les tests du parseur (Sans dépendance)
+Vous pouvez exécuter les tests du parseur directement avec le moteur de test natif de Python (`unittest`), sans avoir besoin d'installer Home Assistant :
+
+```bash
+python -m unittest tests/components/meteo_grenoble/test_parser.py
+```
+
+### 3. Lancer la suite de tests complète (Avec dépendances)
+Les autres fichiers de test (`test_init.py`, `test_config_flow.py`) valident l'intégration dans l'écosystème de Home Assistant et nécessitent d'exécuter les tests dans un environnement virtuel où Home Assistant et ses dépendances de développement (`pytest`, etc.) sont installés :
+
+```bash
+# Activation de votre environnement virtuel de développement
+pytest tests/components/meteo_grenoble/
+```
+
+---
 ## 🐞 Résolution des problèmes et Debugging
 
 Si vous rencontrez un problème avec l'intégration, vous pouvez activer les logs de débogage dans votre fichier `configuration.yaml` :
