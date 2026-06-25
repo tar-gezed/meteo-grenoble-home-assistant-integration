@@ -14,6 +14,6 @@ HEADERS = {
     "RSC": "1",
 }
 
-UPDATE_INTERVAL = timedelta(minutes=15)
+UPDATE_INTERVAL = timedelta(minutes=18)
 
 PLATFORMS = ["weather", "sensor", "binary_sensor"]

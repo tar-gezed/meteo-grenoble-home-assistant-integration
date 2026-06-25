@@ -1,6 +1,6 @@
 {
   "name": "Météo-Grenoble.com",
-  "homeassistant": "2023.9.0",
+  "homeassistant": "2026.1.0",
   "zip_release": true,
   "filename": "meteo_grenoble.zip",
   "hide_default_branch": true,

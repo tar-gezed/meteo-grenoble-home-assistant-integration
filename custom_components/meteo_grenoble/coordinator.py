@@ -36,4 +36,11 @@ class MeteoGrenobleDataUpdateCoordinator(DataUpdateCoordinator):
                 content = await response.text()
                 return parse_rsc_stream(content)
         except Exception as err:
+            if self.data and isinstance(self.data, dict) and "realtime" in self.data:
+                LOGGER.warning(
+                    "Error fetching meteo_grenoble data, using previous cached data: %s",
+                    err,
+                )
+                return self.data
             raise UpdateFailed(f"Error communicating with server: {err}") from err
+

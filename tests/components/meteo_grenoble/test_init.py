@@ -74,3 +74,42 @@ async def test_coordinator_fetch_failure(hass: HomeAssistant, mock_config_entry,
     await hass.async_block_till_done()
 
     assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_coordinator_update_failure_fallback(hass: HomeAssistant, mock_config_entry, aioclient_mock: AiohttpClientMocker, freezer) -> None:
+    """Test that coordinator falls back to previous data if a subsequent refresh fails."""
+    freezer.move_to("2026-06-20T15:00:00+00:00")
+    mock_config_entry.add_to_hass(hass)
+
+    mock_rsc_content = read_scratch_file("home_rsc.txt")
+
+    # 1. Setup with successful response
+    aioclient_mock.get(URL_METEO_GRENOBLE, text=mock_rsc_content)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Verify initial success state
+    coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+    assert coordinator.data["realtime"]["temperature"] == 22.3
+
+    # Check that individual temperature sensor is correct
+    temp_state = hass.states.get("sensor.meteo_grenoble_com_temperature")
+    assert temp_state is not None
+    assert float(temp_state.state) == 22.3
+
+    # 2. Mock a failure on the subsequent refresh
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(URL_METEO_GRENOBLE, exc=Exception("Server Timeout"))
+
+    # Force a refresh
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    # The coordinator should retain the previous data instead of failing/going unavailable
+    assert coordinator.data["realtime"]["temperature"] == 22.3
+
+    # The states of entities should NOT be unavailable
+    temp_state = hass.states.get("sensor.meteo_grenoble_com_temperature")
+    assert temp_state is not None
+    assert float(temp_state.state) == 22.3
+

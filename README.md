@@ -197,6 +197,12 @@ template:
       - name: "Météo Grenoble Pluie dans l'heure"
         unique_id: meteo_grenoble_pluie_dans_l_heure
         temperature_unit: "°C"
+        availability: >
+          {{ has_value('sensor.meteo_grenoble_com_pluie_dans_l_heure') and
+             state_attr('sensor.meteo_grenoble_com_pluie_dans_l_heure', 'forecast') is not none and
+             has_value('weather.meteo_grenoble_com') and
+             has_value('sensor.meteo_grenoble_com_temperature') and
+             has_value('sensor.meteo_grenoble_com_humidity') }}
         condition: >
           {% set rain_val = state_attr('sensor.meteo_grenoble_com_pluie_dans_l_heure', 'forecast') %}
           {% if rain_val and rain_val|length > 0 %}
@@ -210,10 +216,10 @@ template:
               lightning-rainy
             {% endif %}
           {% else %}
-            unknown
+            {{ states('weather.meteo_grenoble_com') }}
           {% endif %}
-        temperature: "{{ states('sensor.meteo_grenoble_com_temperature') | float(0) }}"
-        humidity: "{{ states('sensor.meteo_grenoble_com_humidity') | float(0) }}"
+        temperature: "{{ states('sensor.meteo_grenoble_com_temperature') | float(none) }}"
+        humidity: "{{ states('sensor.meteo_grenoble_com_humidity') | float(none) }}"
         forecast_hourly: >
           {% set rain_data = state_attr('sensor.meteo_grenoble_com_pluie_dans_l_heure', 'forecast') %}
           {% set is_day = is_state('sun.sun', 'above_horizon') %}
