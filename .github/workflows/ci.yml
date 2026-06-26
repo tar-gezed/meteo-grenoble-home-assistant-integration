@@ -114,4 +114,5 @@ jobs:
           artifacts: "meteo_grenoble.zip"
           skipIfReleaseExists: true
           prerelease: ${{ steps.version_check.outputs.IS_PRERELEASE == 'true' }}
+          generateReleaseNotes: true
           token: ${{ secrets.GITHUB_TOKEN }}
