@@ -53,12 +53,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract version from manifest.json
-        id: get_version
+      - name: Extract and Evaluate Version
+        id: version_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(jq -r '.version' custom_components/meteo_grenoble/manifest.json)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
+          
+          IS_PRERELEASE="false"
+          if [[ "$VERSION" == *"beta"* ]] || [[ "$VERSION" == *"alpha"* ]]; then
+            IS_PRERELEASE="true"
+          fi
+          echo "IS_PRERELEASE=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          
+          BASE_VERSION=$(echo "$VERSION" | sed -E 's/-(beta|alpha).*//')
+          
+          FINAL_EXISTS="false"
+          if gh release view "v$BASE_VERSION" >/dev/null 2>&1; then
+            FINAL_EXISTS="true"
+          fi
+          echo "FINAL_EXISTS=$FINAL_EXISTS" >> $GITHUB_OUTPUT
+          
+          SHOULD_RELEASE="false"
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            if [[ "$IS_PRERELEASE" == "false" ]]; then
+              SHOULD_RELEASE="true"
+            fi
+          else
+            # Feature branch
+            if [[ "$IS_PRERELEASE" == "true" ]] && [[ "$FINAL_EXISTS" == "false" ]]; then
+              SHOULD_RELEASE="true"
+            fi
+          fi
+          echo "SHOULD_RELEASE=$SHOULD_RELEASE" >> $GITHUB_OUTPUT
 
       - name: Create Zip Archive
         run: |
@@ -72,17 +101,17 @@ jobs:
           path: meteo_grenoble.zip
 
       - name: Create GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && steps.version_check.outputs.SHOULD_RELEASE == 'true'
         uses: ncipollo/release-action@v1
         with:
-          tag: v${{ steps.get_version.outputs.VERSION }}
-          name: Release v${{ steps.get_version.outputs.VERSION }}
+          tag: v${{ steps.version_check.outputs.VERSION }}
+          name: Release v${{ steps.version_check.outputs.VERSION }}
           body: |
-            Automatic release for version v${{ steps.get_version.outputs.VERSION }} of the Météo-Grenoble.com Home Assistant integration.
+            Automatic release for version v${{ steps.version_check.outputs.VERSION }} of the Météo-Grenoble.com Home Assistant integration.
             
             ### Installation
             Download the `meteo_grenoble.zip` file below and extract it into your `custom_components/` directory, or use HACS.
           artifacts: "meteo_grenoble.zip"
           skipIfReleaseExists: true
-          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'beta') || contains(steps.get_version.outputs.VERSION, 'alpha') }}
+          prerelease: ${{ steps.version_check.outputs.IS_PRERELEASE == 'true' }}
           token: ${{ secrets.GITHUB_TOKEN }}
