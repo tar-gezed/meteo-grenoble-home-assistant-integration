@@ -1,12 +1,14 @@
 """Parser for the Next.js RSC weather data stream from Météo-Grenoble.com."""
 import json
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
+
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def clean_and_parse_line(line: str) -> Tuple[str | None, Any]:
+def clean_and_parse_line(line: str) -> tuple[str | None, Any]:
     """Clean and parse a single line from the Next.js RSC stream.
 
     Handles standard JSON lines and Next.js internal prefixes (I, T, M, H, L, etc.).
@@ -35,7 +37,7 @@ def clean_and_parse_line(line: str) -> Tuple[str | None, Any]:
         return key, val_str
 
 
-def parse_rsc_stream(content: str) -> Dict[str, Any]:
+def parse_rsc_stream(content: str) -> dict[str, Any]:
     """Parse the raw Next.js RSC text stream and extract weather components.
 
     Extracts:
@@ -47,12 +49,15 @@ def parse_rsc_stream(content: str) -> Dict[str, Any]:
         raise ValueError("Empty response received from the server")
 
     lines = content.split("\n")
-    forecasts_list: List[List[Dict[str, Any]]] = []
-    rain_list: List[List[Dict[str, Any]]] = []
-    realtime_list: List[Dict[str, Any]] = []
+    forecasts_list: list[list[dict[str, Any]]] = []
+    rain_list: list[list[dict[str, Any]]] = []
+    realtime_list: list[dict[str, Any]] = []
 
-    def search_data(obj: Any) -> None:
+    def search_data(obj: Any, depth: int = 0) -> None:
         """Recursively search for target dictionaries in the parsed object."""
+        if depth > 50:
+            return
+            
         if isinstance(obj, dict):
             # Find daily forecasts
             if "forecasts" in obj and isinstance(obj["forecasts"], list):
@@ -72,12 +77,12 @@ def parse_rsc_stream(content: str) -> Dict[str, Any]:
             # Recurse
             for val in obj.values():
                 if isinstance(val, (dict, list)):
-                    search_data(val)
+                    search_data(val, depth + 1)
 
         elif isinstance(obj, list):
             for item in obj:
                 if isinstance(item, (dict, list)):
-                    search_data(item)
+                    search_data(item, depth + 1)
 
     for line in lines:
         cleaned_line = line.strip()
@@ -89,11 +94,19 @@ def parse_rsc_stream(content: str) -> Dict[str, Any]:
         search_data(val)
 
     if not realtime_list and not forecasts_list:
+        _LOGGER.error("Weather data structures not found in RSC stream. RSC structure might have changed.")
         raise ValueError("Could not find weather data in the RSC stream")
+
+    if not realtime_list:
+        _LOGGER.debug("Realtime data not found in RSC stream.")
+    if not forecasts_list:
+        _LOGGER.debug("Forecasts data not found in RSC stream.")
 
     realtime = realtime_list[0] if realtime_list else {}
     forecasts = forecasts_list[0] if forecasts_list else []
     rain = rain_list[0] if rain_list else []
+
+    _LOGGER.debug("Extracted %d realtime metrics, %d forecast days", len(realtime), len(forecasts))
 
     return {
         "realtime": realtime,
@@ -102,45 +115,46 @@ def parse_rsc_stream(content: str) -> Dict[str, Any]:
     }
 
 
-def get_today_forecast(forecasts: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+def get_today_forecast(forecasts: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Return the forecast dictionary for today in local time."""
     if not forecasts:
         return None
-    from datetime import datetime
-    today = datetime.now().date()
+    today = dt_util.now().date()
     for day in forecasts:
         day_str = day.get("day", "")
         if not day_str:
             continue
         try:
-            forecast_date = datetime.fromisoformat(day_str.replace("Z", "+00:00")).date()
+            forecast_date = dt_util.parse_datetime(day_str).date()
             if forecast_date == today:
                 return day
-        except Exception:
-            pass
+        except Exception as e:
+            _LOGGER.warning("Could not parse forecast date '%s': %s", day_str, e)
+    
+    _LOGGER.warning("Today's forecast not found, falling back to first available day")
     return forecasts[0]
 
 
-def get_yesterday_forecast(forecasts: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+def get_yesterday_forecast(forecasts: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Return the forecast dictionary for yesterday in local time."""
     if not forecasts:
         return None
-    from datetime import datetime, timedelta
-    yesterday = datetime.now().date() - timedelta(days=1)
+    from datetime import timedelta
+    yesterday = dt_util.now().date() - timedelta(days=1)
     for day in forecasts:
         day_str = day.get("day", "")
         if not day_str:
             continue
         try:
-            forecast_date = datetime.fromisoformat(day_str.replace("Z", "+00:00")).date()
+            forecast_date = dt_util.parse_datetime(day_str).date()
             if forecast_date == yesterday:
                 return day
-        except Exception:
-            pass
+        except Exception as e:
+            _LOGGER.warning("Could not parse forecast date '%s' for yesterday: %s", day_str, e)
     return None
 
 
-def get_flash_alert(forecasts: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+def get_flash_alert(forecasts: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Find the flash alert dictionary from the forecasts list."""
     if not forecasts:
         return None

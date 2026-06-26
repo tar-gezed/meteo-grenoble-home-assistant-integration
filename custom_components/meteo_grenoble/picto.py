@@ -83,11 +83,11 @@ PICTO_TO_DESCRIPTION = {
 }
 
 
-def map_picto_to_condition(picto: int | None) -> str:
+def map_picto_to_condition(picto: int | None) -> str | None:
     """Map the website's picto code to a standard Home Assistant weather condition."""
     if picto is None:
-        return "cloudy"
-    return PICTO_TO_CONDITION.get(picto, "cloudy")
+        return None
+    return PICTO_TO_CONDITION.get(picto)
 
 
 def map_picto_to_description(picto: int | None) -> str | None:

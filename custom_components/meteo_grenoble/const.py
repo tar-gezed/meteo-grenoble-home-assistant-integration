@@ -10,10 +10,11 @@ DEFAULT_NAME = "Météo-Grenoble.com"
 URL_METEO_GRENOBLE = "https://www.meteo-grenoble.com/"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": "HomeAssistant/MeteoGrenoble/1.0.7",
     "RSC": "1",
 }
 
 UPDATE_INTERVAL = timedelta(minutes=18)
 
-PLATFORMS = ["weather", "sensor", "binary_sensor"]
+from homeassistant.const import Platform
+PLATFORMS: list[Platform] = [Platform.WEATHER, Platform.SENSOR, Platform.BINARY_SENSOR]

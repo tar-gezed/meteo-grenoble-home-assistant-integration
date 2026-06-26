@@ -1,20 +1,17 @@
 """Binary sensor platform for Météo-Grenoble.com."""
 from __future__ import annotations
 
-from typing import Any
-
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DEFAULT_NAME, DOMAIN
+from .__init__ import MeteoGrenobleConfigEntry
+from .const import DOMAIN
+from .entity import MeteoGrenobleEntity
 from .parser import get_today_forecast
 
 # Description of all binary sensors (vigilances)
@@ -64,11 +61,11 @@ BINARY_SENSOR_TYPES: tuple[BinarySensorEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: MeteoGrenobleConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Météo-Grenoble.com binary sensor platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     async_add_entities(
         [
             MeteoGrenobleBinarySensor(coordinator, entry, description)
@@ -78,26 +75,16 @@ async def async_setup_entry(
     )
 
 
-class MeteoGrenobleBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class MeteoGrenobleBinarySensor(MeteoGrenobleEntity, BinarySensorEntity):
     """Representation of a Météo-Grenoble.com vigilance binary sensor."""
 
-    _attr_has_entity_name = True
-
     def __init__(
-        self, coordinator, entry: ConfigEntry, description: BinarySensorEntityDescription
+        self, coordinator, entry: MeteoGrenobleConfigEntry, description: BinarySensorEntityDescription
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, entry)
         self.entity_description = description
-        self._entry = entry
-        self._attr_unique_id = f"{entry.entry_id}_vigilance_{description.key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=DEFAULT_NAME,
-            manufacturer="Météo Grenoble",
-            model="meteo-grenoble.com",
-            entry_type=DeviceEntryType.SERVICE,
-        )
+        self._attr_unique_id = f"{DOMAIN}_vigilance_{description.key}"
 
     @property
     def is_on(self) -> bool | None:

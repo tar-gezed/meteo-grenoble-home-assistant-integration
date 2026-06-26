@@ -422,22 +422,36 @@ Cette intégration a été conçue pour respecter le fonctionnement du site [met
 Le projet intègre une suite de tests unitaires pour valider le comportement du parseur RSC, le mappage des pictogrammes et l'extraction des alertes.
 
 ### 1. Fonctionnement des tests
-Les tests du parseur sont indépendants du framework Home Assistant. Ils se basent sur des **fixtures hors-ligne** (extraits textuels réels de flux RSC enregistrés localement dans `tests/components/meteo_grenoble/fixtures/`). Cela permet de valider le code d'analyse de manière déconnectée, sans dépendance réseau et sans solliciter les serveurs de meteo-grenoble.com.
+Les tests se basent sur des **fixtures hors-ligne** (extraits textuels réels de flux RSC enregistrés localement dans `tests/components/meteo_grenoble/fixtures/`). Cela permet de valider le code d'analyse de manière déconnectée.
 
-### 2. Lancer les tests du parseur (Sans dépendance)
-Vous pouvez exécuter les tests du parseur directement avec le moteur de test natif de Python (`unittest`), sans avoir besoin d'installer Home Assistant :
+### 2. Exécuter les tests sous Linux / WSL (Recommandé)
+L'environnement de test de Home Assistant est massivement optimisé pour les systèmes POSIX (Linux/macOS) avec des centaines de dépendances compilées. Nous recommandons vivement l'utilisation de **WSL** (Windows Subsystem for Linux) ou d'un environnement Linux natif.
 
-```bash
-python -m unittest tests/components/meteo_grenoble/test_parser.py
-```
-
-### 3. Lancer la suite de tests complète (Avec dépendances)
-Les autres fichiers de test (`test_init.py`, `test_config_flow.py`) valident l'intégration dans l'écosystème de Home Assistant et nécessitent d'exécuter les tests dans un environnement virtuel où Home Assistant et ses dépendances de développement (`pytest`, etc.) sont installés :
+Pour une installation ultra-rapide et éviter le blocage de résolution des dépendances (`dependency backtracking`), nous recommandons d'utiliser le gestionnaire de paquets ultra-rapide **uv** et de placer votre environnement virtuel (`venv`) directement dans votre système de fichiers Linux (ex: `~/meteo_venv`), afin de contourner les lenteurs de l'antivirus Windows Defender sur le pont de transfert `/mnt/c/` ou `/mnt/d/`.
 
 ```bash
-# Activation de votre environnement virtuel de développement
-pytest tests/components/meteo_grenoble/
+# 1. Créez le venv directement "chez" Linux (dans votre dossier personnel ~)
+python3 -m venv ~/meteo_venv
+
+# 2. Installez 'uv' dans ce nouveau venv (instantané)
+~/meteo_venv/bin/pip install uv
+
+# 3. Lancez l'installation des dépendances de tests avec 'uv pip' (très rapide)
+~/meteo_venv/bin/uv pip install pytest pytest-homeassistant-custom-component
+
+# 4. Exécutez les tests !
+~/meteo_venv/bin/pytest tests/components/meteo_grenoble/
 ```
+
+### 3. Exécuter les tests sous Windows (Natif)
+Si vous souhaitez exécuter les tests localement de manière native sous Windows (sans utiliser WSL), les incompatibilités liées à `pytest-socket` et `aiodns` avec le `ProactorEventLoop` de Windows sont contournées automatiquement dans le fichier `conftest.py`.
+
+Cependant, il est **requis** d'installer le module `winloop` pour permettre au resolver DNS de fonctionner sous Windows :
+```powershell
+pip install winloop
+```
+
+*Astuce : Si l'installation globale de `homeassistant` sur Windows échoue lors de la compilation de paquets C++ audio (comme `pymicro-vad` ou `pyspeex-noise`), vous pouvez créer de faux paquets locaux (dummy wheels) pour satisfaire `pip`.*
 
 ---
 ## 🐞 Résolution des problèmes et Debugging

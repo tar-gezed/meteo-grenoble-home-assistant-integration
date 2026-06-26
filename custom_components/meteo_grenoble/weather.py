@@ -1,34 +1,32 @@
 """Weather platform for Météo-Grenoble.com."""
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from homeassistant.components.weather import (
     Forecast,
     WeatherEntity,
     WeatherEntityFeature,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPressure, UnitOfSpeed, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DEFAULT_NAME, DOMAIN
+from .__init__ import MeteoGrenobleConfigEntry
+from .const import DOMAIN
+from .entity import MeteoGrenobleEntity
 from .parser import get_today_forecast
 from .picto import map_picto_to_condition, map_picto_to_description
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: MeteoGrenobleConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Météo-Grenoble.com weather platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     async_add_entities([MeteoGrenobleWeather(coordinator, entry)], True)
 
 
@@ -52,29 +50,29 @@ WIND_DIRECTION_MAP = {
 }
 
 
+def _safe_float(val: Any) -> float | None:
+    """Safely convert value to float, catching ValueError."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
 
-class MeteoGrenobleWeather(CoordinatorEntity, WeatherEntity):
+
+class MeteoGrenobleWeather(MeteoGrenobleEntity, WeatherEntity):
     """Representation of the weather at Grenoble."""
 
-    _attr_has_entity_name = True
     _attr_name = None
     _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_native_wind_speed_unit = UnitOfSpeed.KILOMETERS_PER_HOUR
     _attr_native_pressure_unit = UnitOfPressure.HPA
     _attr_supported_features = WeatherEntityFeature.FORECAST_DAILY
 
-    def __init__(self, coordinator, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator, entry: MeteoGrenobleConfigEntry) -> None:
         """Initialize the weather entity."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_unique_id = f"{entry.entry_id}_weather"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=DEFAULT_NAME,
-            manufacturer="Météo Grenoble",
-            model="meteo-grenoble.com",
-            entry_type=DeviceEntryType.SERVICE,
-        )
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{DOMAIN}_weather"
 
     @property
     def _current_picto(self) -> int | None:
@@ -92,7 +90,7 @@ class MeteoGrenobleWeather(CoordinatorEntity, WeatherEntity):
 
         # Determine current condition based on current time
         # Matin (0), Après-midi (1), Soir (2), Nuit (3)
-        current_hour = datetime.now().hour
+        current_hour = dt_util.now().hour
 
         if len(steps) == 4:
             if 6 <= current_hour < 12:
@@ -130,16 +128,16 @@ class MeteoGrenobleWeather(CoordinatorEntity, WeatherEntity):
         realtime = self.coordinator.data.get("realtime", {})
         temp = realtime.get("temperature")
         if temp is not None:
-            return float(temp)
+            return _safe_float(temp)
 
         # Fallback to currentTemp or today's min/max average
         forecasts = self.coordinator.data.get("forecasts", [])
         if forecasts:
             today = get_today_forecast(forecasts)
             if today and "currentTemp" in today and today["currentTemp"] is not None:
-                return float(today["currentTemp"])
+                return _safe_float(today["currentTemp"])
             if "max" in today and today["max"] is not None:
-                return float(today["max"])
+                return _safe_float(today["max"])
 
         return None
 
@@ -149,7 +147,7 @@ class MeteoGrenobleWeather(CoordinatorEntity, WeatherEntity):
         realtime = self.coordinator.data.get("realtime", {})
         humidity = realtime.get("humidity")
         if humidity is not None:
-            return float(humidity)
+            return _safe_float(humidity)
         return None
 
     @property
@@ -158,7 +156,7 @@ class MeteoGrenobleWeather(CoordinatorEntity, WeatherEntity):
         realtime = self.coordinator.data.get("realtime", {})
         wind_speed = realtime.get("wind_speed")
         if wind_speed is not None:
-            return float(wind_speed)
+            return _safe_float(wind_speed)
         return None
 
     @property
@@ -176,7 +174,7 @@ class MeteoGrenobleWeather(CoordinatorEntity, WeatherEntity):
         realtime = self.coordinator.data.get("realtime", {})
         pressure = realtime.get("pressure")
         if pressure is not None:
-            return float(pressure)
+            return _safe_float(pressure)
         return None
 
     @callback
@@ -211,14 +209,14 @@ class MeteoGrenobleWeather(CoordinatorEntity, WeatherEntity):
             forecast_list.append(
                 {
                     "datetime": day.get("day", ""),
-                    "native_temperature": float(day.get("max")) if day.get("max") is not None else None,
-                    "native_templow": float(day.get("min")) if day.get("min") is not None else None,
-                    "native_precipitation": float(day.get("rain24")) if day.get("rain24") is not None else None,
+                    "native_temperature": _safe_float(day.get("max")),
+                    "native_templow": _safe_float(day.get("min")),
+                    "native_precipitation": _safe_float(day.get("rain24")),
                     "precipitation_probability": int(day.get("rainProbability")) if day.get("rainProbability") is not None else None,
                     "condition": map_picto_to_condition(picto),
                     "description": day.get("dayLegend"),
                     "picto_description": map_picto_to_description(picto),
-                    "temp_gap": float(day.get("tempGap")) if day.get("tempGap") is not None else None,
+                    "temp_gap": _safe_float(day.get("tempGap")),
                 }
             )
 
