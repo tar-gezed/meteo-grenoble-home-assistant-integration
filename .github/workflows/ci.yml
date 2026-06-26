@@ -84,4 +84,5 @@ jobs:
             Download the `meteo_grenoble.zip` file below and extract it into your `custom_components/` directory, or use HACS.
           artifacts: "meteo_grenoble.zip"
           skipIfReleaseExists: true
+          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'beta') || contains(steps.get_version.outputs.VERSION, 'alpha') }}
           token: ${{ secrets.GITHUB_TOKEN }}
