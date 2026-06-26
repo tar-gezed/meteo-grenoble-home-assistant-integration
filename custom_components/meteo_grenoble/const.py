@@ -17,4 +17,4 @@ HEADERS = {
 UPDATE_INTERVAL = timedelta(minutes=18)
 
 from homeassistant.const import Platform
-PLATFORMS: list[Platform] = [Platform.WEATHER, Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS: list[Platform] = [Platform.WEATHER, Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
