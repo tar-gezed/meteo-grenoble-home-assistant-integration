@@ -216,7 +216,8 @@ template:
               lightning-rainy
             {% endif %}
           {% else %}
-            {{ states('weather.meteo_grenoble_com') }}
+            {% set base_cond = states('weather.meteo_grenoble_com') %}
+            {{ base_cond if base_cond not in ['unknown', 'unavailable', 'None', ''] else 'exceptional' }}
           {% endif %}
         temperature: "{{ states('sensor.meteo_grenoble_com_temperature') | float(none) }}"
         humidity: "{{ states('sensor.meteo_grenoble_com_humidity') | float(none) }}"
