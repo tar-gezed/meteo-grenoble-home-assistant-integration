@@ -28,18 +28,27 @@ def parse_rsc_stream(content: str) -> dict[str, Any]:
     if not content or not content.strip():
         raise ValueError("Empty response received from the server")
 
-    content = decode_content(content)
+    if "b64" in content[:20] or not content.startswith(
+        ('0:', '1:', '2:', '3:', '4:', '5:', '6:', '7:', '8:', '9:', 'a:', 'b:', 'c:', 'd:', 'e:', 'f:')
+    ):
+        content = decode_content(content)
 
+    content_bytes = content.encode("utf-8")
+    lines = content_bytes.split(b"\n")
+    
     forecasts_list: list[list[dict[str, Any]]] = []
     rain_list: list[list[dict[str, Any]]] = []
     realtime_list: list[dict[str, Any]] = []
     flash_alerts: list[dict[str, Any]] = []
 
+    decoder = json.JSONDecoder()
+
     def search_data(obj: Any, depth: int = 0) -> None:
         """Recursively search for target dictionaries in the parsed object."""
         if depth > 50:
             return
-            
+
+        # Next.js sometimes wraps JSON within strings
         if isinstance(obj, str) and (obj.startswith('{') or obj.startswith('[')):
             try:
                 parsed_str = json.loads(obj)
@@ -49,7 +58,7 @@ def parse_rsc_stream(content: str) -> dict[str, Any]:
 
         if isinstance(obj, dict):
             # Extract flash alerts
-            if "flashTextHtml" in obj and "flashUpdatedAt" in obj:
+            if "flashTextHtml" in obj:
                 flash_alerts.append(obj)
 
             # Find daily forecasts
@@ -66,8 +75,14 @@ def parse_rsc_stream(content: str) -> dict[str, Any]:
             # Find realtime weather data
             if "temperature" in obj and "humidex" in obj and "wind_speed" in obj:
                 realtime_list.append(obj)
+                
+            # If siteInfos is available, extract global updatedAt as fallback
+            if "siteInfos" in obj and isinstance(obj["siteInfos"], dict):
+                site_infos = obj["siteInfos"]
+                if "updatedAt" in site_infos:
+                    # Inject a special fallback marker
+                    realtime_list.append({"global_updated_at": site_infos["updatedAt"]})
 
-            # Recurse
             for val in obj.values():
                 if isinstance(val, (dict, list, str)):
                     search_data(val, depth + 1)
@@ -77,44 +92,61 @@ def parse_rsc_stream(content: str) -> dict[str, Any]:
                 if isinstance(item, (dict, list, str)):
                     search_data(item, depth + 1)
 
-    lines = content.split("\n")
     for line in lines:
-        cleaned_line = line.strip()
-        if not cleaned_line:
-            continue
+        pos = 0
+        while pos < len(line):
+            match = re.match(br'^([0-9a-zA-Z]+):', line[pos:])
+            if not match:
+                break
+                
+            prefix = match.group(1)
+            json_start = len(prefix) + 1 # +1 for ':'
             
-        match = re.match(r'^([0-9a-zA-Z]+):(.*)', cleaned_line)
-        if not match:
-            continue
-            
-        val_str = match.group(2)
-        
-        # Handle Next.js RSC chunk type prefixes (I, T, M, H, L) followed by JSON
-        if len(val_str) > 1 and val_str[0] in "ITMHL" and val_str[1] in "[{":
-            val_str = val_str[1:]
-            
-        try:
-            obj = json.loads(val_str)
-            search_data(obj)
-        except json.JSONDecodeError:
-            pass
+            c = chr(line[pos + json_start]) if pos + json_start < len(line) else ''
+            if c in "IMHL" and pos + json_start + 1 < len(line) and chr(line[pos + json_start + 1]) in "[{":
+                json_start += 1
+                
+            elif c == 'T':
+                comma = line.find(b',', pos + json_start)
+                if comma != -1:
+                    hex_str = line[pos + json_start + 1:comma].decode('ascii')
+                    try:
+                        hex_len = int(hex_str, 16)
+                        pos += comma + 1 + hex_len
+                        continue
+                    except ValueError:
+                        pass
 
-    if not realtime_list and not forecasts_list:
-        _LOGGER.error("Weather data structures not found in RSC stream. RSC structure might have changed.")
-        raise ValueError("Could not find weather data in the RSC stream")
+            try:
+                str_to_parse = line[pos + json_start:].decode('utf-8')
+                obj, str_index = decoder.raw_decode(str_to_parse)
+                search_data(obj)
+                
+                parsed_bytes_len = len(str_to_parse[:str_index].encode('utf-8'))
+                pos += json_start + parsed_bytes_len
+            except json.JSONDecodeError:
+                break
 
-    if not realtime_list:
-        _LOGGER.debug("Realtime data not found in RSC stream.")
-    if not forecasts_list:
-        _LOGGER.debug("Forecasts data not found in RSC stream.")
-
-    realtime = realtime_list[0] if realtime_list else {}
+    # Consolidate and extract specific elements
+    realtime = next((r for r in realtime_list if "temperature" in r), {})
+    global_updated_at = next((r["global_updated_at"] for r in realtime_list if "global_updated_at" in r), "2000-01-01T00:00:00+00:00")
+    
     forecasts = forecasts_list[0] if forecasts_list else []
     rain = rain_list[0] if rain_list else []
 
+    if not realtime and not forecasts:
+        _LOGGER.error("Weather data structures not found in RSC stream. RSC structure might have changed.")
+        raise ValueError("Could not find weather data in the RSC stream")
+
     if flash_alerts:
-        flash_alerts.sort(key=lambda x: x.get("flashUpdatedAt", ""), reverse=True)
-        latest_flash = flash_alerts[0]
+        flash_alerts.sort(
+            key=lambda x: x.get("flashUpdatedAt") or global_updated_at, 
+            reverse=True
+        )
+        latest_flash = flash_alerts[0].copy()
+        if "flashUpdatedAt" not in latest_flash:
+            latest_flash["flashUpdatedAt"] = global_updated_at
+            
         for day in forecasts:
             if isinstance(day, dict):
                 day["flash"] = latest_flash

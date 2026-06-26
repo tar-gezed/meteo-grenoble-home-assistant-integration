@@ -30,14 +30,22 @@ DONATION_PATTERN = re.compile(
 )
 HTML_PATTERN = re.compile(r"<[^>]+>")
 
-def clean_flash_text(text: str) -> str:
-    """Clean HTML and donation messages from flash text."""
+def clean_flash_text(text: str | None) -> str:
+    """Clean the flash text by removing HTML tags and specific donation messages."""
+    if not text:
+        return ""
+    
+    # First remove HTML tags and unescape entities so regex can match > instead of &gt;
     text = html.unescape(HTML_PATTERN.sub("", text))
+    
+    # Remove the specific donation sentence with its arrows
     text = DONATION_PATTERN.sub("", text)
-    # Collapse 3 or more newlines to 2 newlines (a single blank line)
+    
+    # Remove multiple consecutive newlines
     text = re.sub(r'\n{3,}', '\n\n', text)
-    # Strip leading/trailing spaces on each line, and strip the whole string
-    return "\n".join(line.strip() for line in text.split("\n")).strip()
+    
+    # Final cleanup of whitespace on each line
+    return "\n".join(line.strip() for line in text.split("\n") if line.strip()).strip()
 
 
 @dataclass(frozen=True, kw_only=True)

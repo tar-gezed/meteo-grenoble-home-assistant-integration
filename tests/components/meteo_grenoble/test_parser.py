@@ -90,6 +90,56 @@ def test_parse_base64_encoded_stream():
     assert isinstance(data["realtime"].get("temperature"), (int, float))
 
 
+def test_parse_glued_chunks_with_accents():
+    """Test parsing glued RSC chunks containing accented characters (byte-level parser verification)."""
+    # The chunk 34:T17, contains a text payload {"@context":"Éàçû"}
+    # The string '{"@context":"Éàçû"}' is EXACTLY 23 bytes long (0x17 in hex).
+    # Since É, à, ç, û are 2 bytes each, it is 19 characters but 23 bytes.
+    # This proves that our parser skips exactly 23 bytes and lands perfectly on 8:[
+    payload = (
+        '1:I[{"temperature":20,"humidex":21,"wind_speed":10,"siteInfos":{"updatedAt":"2026-06-25T00:00:00+00:00"}}]\n'
+        '2:I[{"forecasts":[{"day":"2026-06-25T00:00:00+00:00","tMin":10,"tMax":20,"weather":1}]}]\n'
+        '34:T17,{"@context":"Éàçû"}8:[{"flashTextHtml":"<p>Warning</p>","flashUpdatedAt":"2026-06-26"}]'
+    )
+    
+    data = parse_rsc_stream(payload)
+    
+    # Assert that the flash alert was found despite the glued chunks and accented text payload
+    forecast = data.get("forecasts", [])
+    assert len(forecast) > 0
+    
+    day = forecast[0]
+    assert "flash" in day
+    assert day["flash"]["flashTextHtml"] == "<p>Warning</p>"
+    assert day["flash"]["flashUpdatedAt"] == "2026-06-26"
+
+
+def test_parse_real_glued_chunks_stream():
+    """Test parsing a real production RSC stream containing Next.js glued chunks and accented T chunks."""
+    content = read_scratch_file("live_rsc_glued_chunks.txt")
+    data = parse_rsc_stream(content)
+    
+    # Verify everything was extracted without errors
+    assert "realtime" in data
+    assert "forecasts" in data
+    
+    # Check flash alert presence (the real stream contains a flash alert)
+    forecast = data.get("forecasts", [])
+    assert len(forecast) > 0
+    day = forecast[0]
+    assert "flash" in day
+    
+    flash = day.get("flash")
+    assert isinstance(flash, dict)
+    assert "flashUpdatedAt" in flash
+    assert "flashTextHtml" in flash
+    
+    # Assert that it successfully found the latest alert (since the stream contains the live banner without a native date, 
+    # our fallback logic gives it the global update date which overrides the old alert).
+    # We just ensure it isn't empty.
+    assert len(flash["flashTextHtml"]) > 0
+
+
 def test_parse_demain_rsc():
     """Test parsing the demain_rsc_decoded.txt stream (tomorrow page)."""
     content = read_scratch_file("demain_rsc_decoded.txt")
