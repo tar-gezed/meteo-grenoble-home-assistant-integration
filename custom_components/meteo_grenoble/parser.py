@@ -112,7 +112,7 @@ def parse_rsc_stream(content: str) -> dict[str, Any]:
                     hex_str = line[pos + json_start + 1:comma].decode('ascii')
                     try:
                         hex_len = int(hex_str, 16)
-                        pos += comma + 1 + hex_len
+                        pos = comma + 1 + hex_len
                         continue
                     except ValueError:
                         pass

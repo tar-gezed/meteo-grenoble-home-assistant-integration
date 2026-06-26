@@ -136,8 +136,9 @@ def test_parse_real_glued_chunks_stream():
     
     # Assert that it successfully found the latest alert (since the stream contains the live banner without a native date, 
     # our fallback logic gives it the global update date which overrides the old alert).
-    # We just ensure it isn't empty.
-    assert len(flash["flashTextHtml"]) > 0
+    # We must explicitly check that it picked the NEW alert (06:17:04) and not the old buggy one from the 25th.
+    assert flash["flashUpdatedAt"] == "2026-06-26T06:17:04+00:00"
+    assert "IMPORTANT" in flash["flashTextHtml"]
 
 
 def test_parse_demain_rsc():
