@@ -48,15 +48,16 @@ class MeteoGrenobleDataUpdateCoordinator(DataUpdateCoordinator[MeteoGrenobleData
                 )
                 content = await response.text()
                 return await self.hass.async_add_executor_job(parse_rsc_stream, content)
-        except (TimeoutError, aiohttp.ClientError) as err:
+        except (TimeoutError, aiohttp.ClientError, ValueError) as err:
+            if isinstance(err, ValueError):
+                LOGGER.debug("Failed to parse RSC stream content: %s", content)
+                
             if self.data and isinstance(self.data, dict) and "realtime" in self.data:
                 LOGGER.warning(
-                    "Network error fetching meteo_grenoble data, using previous cached data: %s",
+                    "Error fetching meteo_grenoble data, using previous cached data: %s",
                     err,
                 )
+                LOGGER.debug("Detailed error information for fallback: %s", err, exc_info=True)
                 return self.data
-            raise UpdateFailed(f"Network error communicating with server: {err}") from err
-        except ValueError as err:
-            LOGGER.debug("Failed to parse RSC stream content: %s", content)
-            raise UpdateFailed(f"Parsing error: {err}") from err
+            raise UpdateFailed(f"Error updating meteo_grenoble data: {err}") from err
 

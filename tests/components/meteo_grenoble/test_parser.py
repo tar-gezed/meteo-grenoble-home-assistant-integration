@@ -1,4 +1,5 @@
 """Tests for the Météo-Grenoble.com data parser."""
+import base64
 import os
 import pytest
 from datetime import timedelta
@@ -76,6 +77,17 @@ def test_parse_home_rsc():
     assert len(rain) == 9
     assert rain[0].get("desc") == "Temps sec"
     assert rain[0].get("rain") == 1
+
+
+def test_parse_base64_encoded_stream():
+    """Test parsing a base64 encoded stream from actual production logs."""
+    encoded = read_scratch_file("base64_rsc.txt")
+    # Also add some whitespace to ensure strip() works
+    data = parse_rsc_stream(f"  \n{encoded}\n  ")
+
+    assert "realtime" in data
+    assert "forecasts" in data
+    assert isinstance(data["realtime"].get("temperature"), (int, float))
 
 
 def test_parse_demain_rsc():

@@ -1,4 +1,5 @@
 """Parser for the Next.js RSC weather data stream from Météo-Grenoble.com."""
+import base64
 import json
 import logging
 from typing import Any
@@ -37,6 +38,19 @@ def clean_and_parse_line(line: str) -> tuple[str | None, Any]:
         return key, val_str
 
 
+def decode_content(content: str) -> str:
+    """Try to decode the content if it's base64 encoded."""
+    try:
+        # Base64 string from Next.js might have surrounding whitespace
+        clean_content = content.strip()
+        # validate=True ensures it strictly follows base64 encoding
+        decoded = base64.b64decode(clean_content, validate=True)
+        return decoded.decode("utf-8")
+    except Exception:
+        # If decoding fails, it is not valid base64, return original content
+        return content
+
+
 def parse_rsc_stream(content: str) -> dict[str, Any]:
     """Parse the raw Next.js RSC text stream and extract weather components.
 
@@ -47,6 +61,8 @@ def parse_rsc_stream(content: str) -> dict[str, Any]:
     """
     if not content or not content.strip():
         raise ValueError("Empty response received from the server")
+
+    content = decode_content(content)
 
     lines = content.split("\n")
     forecasts_list: list[list[dict[str, Any]]] = []
