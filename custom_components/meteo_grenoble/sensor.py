@@ -25,10 +25,19 @@ from .parser import get_today_forecast, get_yesterday_forecast, get_flash_alert
 from .picto import map_picto_to_condition, map_picto_to_description
 
 DONATION_PATTERN = re.compile(
-    r"IMPORTANT\s*>+\s*Merci pour vos dons,\s*véritables moteurs de ce service gratuit\s*>+\s*Votre soutien nous aide à couvrir les coûts de fonctionnement,\s*à développer de nouvelles fonctionnalités et à garantir un accès libre à l'information pour tous\.?",
+    r"IMPORTANT\s*>+\s*Merci pour vos dons,\s*véritables moteurs de ce service gratuit\s*>+\s*(?:Votre soutien nous aide à couvrir les coûts de fonctionnement,\s*à développer de nouvelles fonctionnalités et à garantir un accès libre à l'information pour tous\.?)?",
     flags=re.IGNORECASE
 )
 HTML_PATTERN = re.compile(r"<[^>]+>")
+
+def clean_flash_text(text: str) -> str:
+    """Clean HTML and donation messages from flash text."""
+    text = html.unescape(HTML_PATTERN.sub("", text))
+    text = DONATION_PATTERN.sub("", text)
+    # Collapse 3 or more newlines to 2 newlines (a single blank line)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # Strip leading/trailing spaces on each line, and strip the whole string
+    return "\n".join(line.strip() for line in text.split("\n")).strip()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -238,10 +247,7 @@ SENSOR_TYPES: tuple[MeteoGrenobleSensorEntityDescription, ...] = (
         ),
         extra_attrs_fn=lambda r, f, rn: (
             lambda flash: {
-                "text": DONATION_PATTERN.sub(
-                    " ",
-                    html.unescape(HTML_PATTERN.sub("", flash.get("flashTextHtml", ""))).strip(),
-                ).strip(),
+                "text": clean_flash_text(flash.get("flashTextHtml", "")),
                 "updated_at": flash.get("flashUpdatedAt"),
                 "level": flash.get("flashLevel"),
             } if isinstance(flash, dict) else None
