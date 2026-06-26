@@ -201,8 +201,7 @@ template:
           {{ has_value('sensor.meteo_grenoble_com_pluie_dans_l_heure') and
              state_attr('sensor.meteo_grenoble_com_pluie_dans_l_heure', 'forecast') is not none and
              has_value('weather.meteo_grenoble_com') and
-             has_value('sensor.meteo_grenoble_com_temperature') and
-             has_value('sensor.meteo_grenoble_com_humidity') }}
+             has_value('sensor.meteo_grenoble_com_temperature') }}
         condition: >
           {% set rain_val = state_attr('sensor.meteo_grenoble_com_pluie_dans_l_heure', 'forecast') %}
           {% if rain_val and rain_val|length > 0 %}

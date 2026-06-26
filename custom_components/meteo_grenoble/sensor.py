@@ -157,7 +157,6 @@ SENSOR_TYPES: tuple[MeteoGrenobleSensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.HUMIDITY,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
         value_fn=get_realtime_float("humidity"),
     ),
     MeteoGrenobleSensorEntityDescription(
